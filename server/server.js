@@ -4,7 +4,8 @@ const express = require('express'),
     bodyparser = require('body-parser'),
     cors = require('cors'),
     passport = require('passport'),
-    Auth0Strategy = require('passport-auth0');
+    Auth0Strategy = require('passport-auth0'),
+    massive = require('massive');
 
 const app = express();
 app.use(bodyparser.json());
@@ -17,6 +18,11 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+//grabbing database connection
+massive(process.env.CONNECTION_STRING).then((db) => {
+    app.set('db', db);
+})
+
 passport.use(new Auth0Strategy({
     domain: process.env.AUTH_DOMAIN,
     clientID: process.env.AUTH_CLIENTID,
@@ -24,15 +30,29 @@ passport.use(new Auth0Strategy({
     callbackURL: process.env.AUTH_CALLBACK_URL,
     scope: "openid profile"
 }, function (accessToken, refreshToken, extraParams, profile, done) {
-    console.log(profile);
-    done(null, profile);
+    let { displayName, user_id, picture } = Profile;
+    const db = app.get('db');
+
+    db.find_user([user_id]).then(function (users) {
+        if (!users[0]) {
+            db.create_user([
+                displayName,
+                'test@test.com',
+                picture,
+                user_id
+            ]).then(user => {
+                return done(null, user.id)
+            })
+        } else {
+            return done(null, users[0].id)
+        }
+    })
 }))
 
-
-passport.serializeUser((profile, done)=>{
+passport.serializeUser((profile, done) => {
     done(null, profile);
 })
-passport.deserializeUser((profile, done)=>{
+passport.deserializeUser((profile, done) => {
     done(null, profile);
 })
 
